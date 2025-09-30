@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Просмотр PDF (адаптивно, через PDF.js)</title>
+  <style>
+    html, body { margin:0; background:#000; color:#fff; }
+    header { position:sticky; top:0; z-index:10; background:#0b0c0e; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; }
+    header a { color:#14d368; text-decoration:none; font-weight:600; }
+    #viewer { max-width: 960px; margin: 0 auto; padding: 8px 8px 24px; }
+    .page { position:relative; margin: 10px auto; width: 100%; }
+    canvas { width: 100% !important; height: auto !important; display:block; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.35); background:#111;}
+    .loading { padding: 20px; text-align:center; opacity:.8; }
+  </style>
+  <!-- PDF.js с CDN -->
+  <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script>
+    // Настройка воркера PDF.js
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+  </script>
+</head>
+<body>
+  <header>
+    <div>PDF Viewer</div>
+    <nav><a href="mobile.pdf" download>Скачать PDF</a></nav>
+  </header>
+
+  <div id="viewer">
+    <div class="loading" id="loading">Загружаю документ…</div>
+  </div>
+
+  <script>
+    const url = "mobile.pdf"; // лежит рядом с этим index.html
+
+    function renderPDF(container) {
+      const DPR = Math.min(window.devicePixelRatio || 1, 2); // чуть ограничим ради веса
+      pdfjsLib.getDocument(url).promise.then(async (pdf) => {
+        document.getElementById('loading')?.remove();
+        for (let p = 1; p <= pdf.numPages; p++) {
+          const page = await pdf.getPage(p);
+          const viewport = page.getViewport({ scale: 1 });
+          // подстраиваем масштаб под ширину контейнера
+          const targetWidth = container.clientWidth;
+          const scale = targetWidth / viewport.width;
+          const scaledViewport = page.getViewport({ scale });
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = Math.floor(scaledViewport.width * DPR);
+          canvas.height = Math.floor(scaledViewport.height * DPR);
+          canvas.style.width = scaledViewport.width + 'px';
+          canvas.style.height = scaledViewport.height + 'px';
+          const wrapper = document.createElement('div');
+          wrapper.className = 'page';
+          wrapper.appendChild(canvas);
+          container.appendChild(wrapper);
+          await page.render({ canvasContext: ctx, viewport: page.getViewport({ scale: scale * DPR }) }).promise;
+        }
+      }).catch((err) => {
+        const l = document.getElementById('loading');
+        if (l) l.textContent = "Не удалось открыть PDF: " + err.message;
+      });
+    }
+
+    window.addEventListener('load', () => {
+      const viewer = document.getElementById('viewer');
+      renderPDF(viewer);
+    });
+
+    // Перерисовка при изменении размера экрана (дебаунс)
+    let t;
+    window.addEventListener('resize', () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const viewer = document.getElementById('viewer');
+        const canvases = viewer.querySelectorAll('canvas');
+        if (!canvases.length) return;
+        viewer.innerHTML = '<div class="loading" id="loading">Перестраиваю…</div>';
+        renderPDF(viewer);
+      }, 200);
+    });
+  </script>
+</body>
+</html>
